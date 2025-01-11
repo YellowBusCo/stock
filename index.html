@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Management App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .item-list {
+            list-style-type: none;
+        }
+        .item {
+            padding: 10px;
+            border: 1px solid #ddd;
+            margin: 5px 0;
+        }
+        button {
+            padding: 10px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Stock Management App</h1>
+
+    <!-- Authentication button -->
+    <button id="authButton" onclick="authorizeUser()">Sign in with Google</button>
+
+    <h2>Stock Take</h2>
+    <ul id="stockList" class="item-list"></ul>
+    
+    <button onclick="saveStockData()">Save Stock Take</button>
+
+    <h2>Current Stock</h2>
+    <ul id="currentStock" class="item-list"></ul>
+
+    <h2>Stock Received</h2>
+    <ul id="receiveStockList" class="item-list"></ul>
+    <button onclick="saveReceivedStock()">Save Received Stock</button>
+
+    <!-- Google API Script -->
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script>
+        // API & OAuth configuration
+        const CLIENT_ID = '558671415792-f1cs6kbh293q9d5o64popk247v7j6qp3.apps.googleusercontent.com';
+        const API_KEY = 'AIzaSyCJ9c-kVKxCtp88v4cWJWXNM-Ej5VJBrgc';
+        const SHEET_ID = '1if7O_h140C9Tt4vxyoMawjXF6kXpnz5nxfMMNhlnasM'; // Google Sheets ID
+        const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
+        const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+
+        let gapiInited = false;
+        let gisInited = false;
+
+        // Initialize Google API
+        function gapiInit() {
+            gapi.client.init({
+                apiKey: API_KEY,
+                clientId: CLIENT_ID,
+                discoveryDocs: DISCOVERY_DOCS,
+                scope: SCOPES
+            }).then(function () {
+                gapiInited = true;
+                if (gisInited) {
+                    authorizeUser();
+                }
+            });
+        }
+
+        // Initialize Google Sign-In
+        function gisInit() {
+            gapi.auth2.init({
+                client_id: CLIENT_ID
+            }).then(function () {
+                gisInited = true;
+                if (gapiInited) {
+                    authorizeUser();
+                }
+            });
+        }
+
+        // Authorize user with Google
+        function authorizeUser() {
+            gapi.auth2.getAuthInstance().signIn().then(function () {
+                document.getElementById("authButton").style.display = 'none'; // Hide login button after sign-in
+                loadStockData(); // Load stock data
+                loadReceivedStock(); // Load received stock data
+            });
+        }
+
+        // Load stock data from Google Sheets (Stock List)
+        function loadStockData() {
+            const range = 'Stock List!A2:D';  // Adjust this range if needed
+            gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: SHEET_ID,
+                range: range
+            }).then(function (response) {
+                const data = response.result.values;
+                if (data) {
+                    createStockTakeForm(data);
+                }
+            });
+        }
+
+        // Display stock items for stock take
+        function createStockTakeForm(items) {
+            const stockList = document.getElementById("stockList");
+            stockList.innerHTML = ''; // Clear the current list
+
+            items.forEach(function (item) {
+                const listItem = document.createElement('li');
+                listItem.classList.add('item');
+
+                const itemID = item[0];
+                const itemName = item[1];
+                const itemPrice = item[2];
+                const itemImage = item[3];
+
+                listItem.innerHTML = `
+                    <img src="${itemImage}" width="50" alt="${itemName}">
+                    <strong>${itemName}</strong> (${itemPrice} USD)
+                    <input type="number" id="stock-${itemID}" placeholder="Enter stock taken" min="0">
+                `;
+
+                stockList.appendChild(listItem);
+            });
+        }
+
+        // Save stock take data to Google Sheets (Stock Take Record)
+        function saveStockData() {
+            const stockData = [];
+            const items = document.querySelectorAll('.item input');
+
+            items.forEach(function (input) {
+                const itemId = input.id.split('-')[1];
+                const quantityTaken = input.value;
+
+                if (quantityTaken) {
+                    stockData.push([itemId, quantityTaken, new Date().toISOString()]);
+                }
+            });
+
+            // Write the data to Stock Take Record sheet
+            if (stockData.length > 0) {
+                gapi.client.sheets.spreadsheets.values.append({
+                    spreadsheetId: SHEET_ID,
+                    range: 'Stock Take Record!A2:C',
+                    valueInputOption: 'RAW',
+                    resource: {
+                        values: stockData
+                    }
+                }).then(function () {
+                    alert('Stock taken data saved!');
+                });
+            }
+        }
+
+        // Load received stock data
+        function loadReceivedStock() {
+            const range = 'Stock Received!A2:C';  // Adjust this range if needed
+            gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: SHEET_ID,
+                range: range
+            }).then(function (response) {
+                const data = response.result.values;
+                if (data) {
+                    createReceivedStockForm(data);
+                }
+            });
+        }
+
+        // Display received stock items
+        function createReceivedStockForm(items) {
+            const receiveStockList = document.getElementById("receiveStockList");
+            receiveStockList.innerHTML = ''; // Clear the current list
+
+            items.forEach(function (item) {
+                const listItem = document.createElement('li');
+                listItem.classList.add('item');
+
+                const itemID = item[0];
+                const itemName = item[1];
+                const itemQuantity = item[2];
+
+                listItem.innerHTML = `
+                    <strong>${itemName}</strong> (Received: ${itemQuantity})
+                    <input type="number" id="received-${itemID}" placeholder="Enter received stock" min="0">
+                `;
+
+                receiveStockList.appendChild(listItem);
+            });
+        }
+
+        // Save received stock data to Google Sheets (Stock Received Record)
+        function saveReceivedStock() {
+            const receivedData = [];
+            const items = document.querySelectorAll('#receiveStockList .item input');
+
+            items.forEach(function (input) {
+                const itemId = input.id.split('-')[1];
+                const quantityReceived = input.value;
+
+                if (quantityReceived) {
+                    receivedData.push([itemId, quantityReceived, new Date().toISOString()]);
+                }
+            });
+
+            // Write the data to Stock Received Record sheet
+            if (receivedData.length > 0) {
+                gapi.client.sheets.spreadsheets.values.append({
+                    spreadsheetId: SHEET_ID,
+                    range: 'Stock Received!A2:C',
+                    valueInputOption: 'RAW',
+                    resource: {
+                        values: receivedData
+                    }
+                }).then(function () {
+                    alert('Received stock data saved!');
+                });
+            }
+        }
+
+        // Initialize the Google API Client
+        function start() {
+            gapi.load('client:auth2', gapiInit);
+        }
+
+        start(); // Start Google API Client
+    </script>
+</body>
+</html>
